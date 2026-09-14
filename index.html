@@ -417,7 +417,7 @@ textarea.obs-field:focus, .edit-select:focus{outline:none;border-color:var(--t);
           <div id="chartValidadosPorCategoria"></div>
         </div>
         <div class="card chart-card">
-          <h3>Iniciativas por UDN / Regional</h3><div class="cap">Distribuição das iniciativas recebidas</div>
+          <h3>Iniciativas por UDN</h3><div class="cap">Distribuição das iniciativas recebidas</div>
           <div id="chartUdnPorRegional"></div>
         </div>
       </section>
@@ -609,17 +609,16 @@ function sugerirArea(categoriaOriginal){
 </script>
 <script>
 /* ============================================================
-   BASE DE DADOS DE DEMONSTRAÇÃO (MOCK_DATA_UDN)
+   BASE DE DADOS DE DEMONSTRAÇÃO (MOCK_DATA_UDN) — NÃO USADA EM PRODUÇÃO
    ============================================================
-   Isolada da lógica da aplicação, como pedido: nenhuma tela ou regra
-   de negócio depende de este array ser "o mock" — todas consomem
-   RAW_DATA (já normalizado) através de DataService. Quando a
-   integração com Excel Online existir, o único ponto a trocar é o
-   corpo de DataService.buscarTodasIniciativas() — nada mais neste
-   arquivo precisa mudar.
-   Campos marcados PLACEHOLDER assumem uma estrutura plausível de
-   formulário de mapeamento de iniciativa digital, ainda não
-   confirmada contra as colunas reais da planilha das UDNs.
+   Gate 2G (Passo 7): DataService.buscarTodasIniciativas() já chama o
+   Fluxo 1 real (Power Automate / Excel Online) — este array não é mais
+   lido por nenhuma tela ou regra de negócio. Mantido só como massa de
+   referência para testes locais isolados (ex.: abrir o HTML sem rede e
+   trocar manualmente o corpo de buscarTodasIniciativas() de volta para
+   ele). Os nomes de campo aqui (nome_projeto, categoria_oficial, regional
+   etc.) são da estrutura de demonstração antiga — não usar como referência
+   para os nomes reais das colunas do Excel (ver etapa5/etapa3 do projeto).
    ============================================================ */
 const MOCK_DATA_UDN = [
   { id: 1, data_hora_cadastro: "05/08/2026 09:12:00", udn: "UDN Manaus", regional: "Regional Norte", responsavel: "Camila Souza", email_responsavel: "camila.souza@udnmanaus.com.br", possui_iniciativa: "Sim", nome_projeto: "Painel de Acompanhamento de Metas", categoria: "Processos Internos", objetivo: "Reduzir o tempo gasto na consolidação manual de metas semanais entre as equipes.", ferramentas_chips: "Power BI, Excel", ferramentas_desc: "Planilha alimentada manualmente, migrada para um painel automático.", indicadores_chips: "Produtividade, Tempo de resposta", indicadores_desc: "Redução do tempo de fechamento semanal.", beneficios_chips: "Economia de tempo, Padronização", beneficios_desc: "Toda a equipe passou a acompanhar o mesmo painel.", status: "Validada", categoria_oficial: "Processos Internos", potencial_replicacao: "alto", nota_reconhecimento: 5, parecer_curadoria: "Iniciativa bem estruturada, de fácil replicação para outras UDNs com rotina semelhante.", revisor_curadoria: "Regiane Souza", status_case: "Pronto para Biblioteca",
@@ -645,40 +644,69 @@ const MOCK_DATA_UDN = [
 </script>
 <script>
 /* ============================================================
+   Endpoints reais do Power Automate — fluxos duplicados dos
+   equivalentes das Franquias, apontando para a TabelaRespostas
+   (Excel Online) das UDNs. Gate 2G do projeto Transformação Digital.
+   ============================================================ */
+const API_BUSCAR_INICIATIVAS_UDN = 'https://defaulte93279240f9745ba871f4a124f3343.19.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/07/workflows/d61183fe7d794fe9a1a5e8d6bd90adff/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=xhJZswqKZ4nJQ_zPc-sNtsOixmAx8aLfRtqoy1vp7Ds';
+const API_SALVAR_CURADORIA_UDN = 'https://defaulte93279240f9745ba871f4a124f3343.19.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/31/workflows/703daa9b4ff543b48623ac2af6a63c72/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=-Hh4fIq3U_wil4OIYMOwZFnWmveZwF6ZyOdeJrsdXVY';
+
+/* ============================================================
    CAMADA DE SERVIÇO DE DADOS — DataService
    ============================================================
    Isola TODA a origem de dados. Nenhuma tela ou regra de negócio lê
    dados diretamente — tudo passa por aqui.
 
-   HOJE: retorna a base de demonstração (MOCK_DATA_UDN), em memória.
-   AMANHÃ: quando a integração com Excel Online / Power Automate
-   existir, a ÚNICA mudança necessária é reimplementar o corpo de
-   buscarTodasIniciativas() (e, se aplicável, salvarCuradoria()) para
-   chamar a API real, mantendo exatamente a mesma assinatura — nenhuma
-   tela ou regra de negócio precisa mudar. Mesmo padrão de "ponto único
-   de substituição" já validado na Central das Franquias (ApiService).
+   Conectado aos Fluxos 1 e 2 (Power Automate / Excel Online) das UDNs —
+   mesmo padrão de "ponto único de substituição" já validado na Central
+   das Franquias (ApiService): nenhuma tela ou regra de negócio precisa
+   saber que a origem mudou de mock para chamada real.
    ============================================================ */
 const DataService = (function () {
 
   async function buscarTodasIniciativas() {
-    // PLACEHOLDER — hoje devolve a base mock. Quando existir a integração,
-    // trocar por uma chamada à origem real (Excel Online via Power Automate),
-    // mantendo o mesmo formato de retorno (array de objetos "raw").
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOCK_DATA_UDN.slice()), 250);
-    });
+    const resp = await fetch(API_BUSCAR_INICIATIVAS_UDN);
+    if (!resp.ok) {
+      throw new Error(`Falha ao buscar iniciativas do Power Automate (HTTP ${resp.status})`);
+    }
+    return resp.json();
   }
 
   /**
-   * Registra a curadoria. Hoje grava só na sessão (via CurationRepository,
-   * chamado por quem invoca esta função) — não há persistência real ainda.
-   * Mantida como função assíncrona desde já para que a troca futura por uma
-   * chamada de rede não exija alterar nenhum código que já a chama.
+   * Envia a curadoria/Case para o Power Automate (Fluxo "Central Curadoria -
+   * Salvar Curadoria UDNs"), que grava só os campos de Curadoria/Case recebidos,
+   * localizando a linha pela ID_Iniciativa — nunca toca nos campos originais da
+   * resposta da UDN. Traduz aqui o formato interno usado pelas telas (categoria/
+   * potencial/nota/parecer/revisor) para os nomes reais das colunas de Curadoria;
+   * os campos de Case (case_*) e status_case já usam o mesmo nome dos dois lados,
+   * então passam direto. Ponto único de tradução — nenhuma tela precisa conhecer
+   * os nomes das colunas do Excel.
    */
   async function salvarCuradoria(dados) {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(Object.assign({}, dados)), 150);
+    const payload = { id: dados.id };
+    if (dados.status !== undefined) payload.status = dados.status;
+    if (dados.categoria !== undefined) payload.categoria_validada = dados.categoria;
+    if (dados.potencial !== undefined) payload.potencial_replicacao = dados.potencial;
+    if (dados.nota !== undefined) payload.nota_reconhecimento = Number(dados.nota);
+    if (dados.parecer !== undefined) payload.parecer_curadoria = dados.parecer;
+    if (dados.revisor !== undefined) payload.revisor_curadoria = dados.revisor;
+    if (dados.status_case !== undefined) payload.status_case = dados.status_case;
+    // CASE_CONTENT_FIELDS é definida mais abaixo no arquivo (camada de UI de Cases) —
+    // reaproveitada aqui em vez de duplicar a lista dos 12 nomes de campo; só é lida
+    // quando esta função roda (depois de todos os <script> já terem carregado).
+    CASE_CONTENT_FIELDS.forEach((campo) => {
+      if (dados[campo] !== undefined) payload[campo] = dados[campo];
     });
+
+    const resp = await fetch(API_SALVAR_CURADORIA_UDN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      throw new Error(`Falha ao salvar curadoria no Power Automate (HTTP ${resp.status})`);
+    }
+    return payload;
   }
 
   return { buscarTodasIniciativas, salvarCuradoria };
@@ -770,7 +798,6 @@ const CurationService = (function () {
       id: item.id,
       nome_iniciativa: item.nome,
       udn: item.udn,
-      regional: item.regional,
       categoria_original: item.categoria_original,
       categoria_validada: form.categoria,
       potencial_validado: form.potencial,
@@ -808,14 +835,15 @@ const CurationService = (function () {
     const totalComIniciativa = rawData.filter(possuiIniciativaRespondida).length;
     const totalSemIniciativa = totalRespostas - totalComIniciativa;
 
-    const porUdnRegional = {}; // { regional: { udn: { total, validadas, pendentes } } }
+    // Sem camada de Regional: a base real das UDNs não tem esse campo, só "Unidade
+    // de Negócio" — agrupamento direto por UDN (removido o nível extra em relação à
+    // versão de demonstração).
+    const porUdn = {}; // { udn: { total, validadas, pendentes } }
     rawData.forEach((item) => {
       if (!possuiIniciativaRespondida(item)) return;
-      const reg = item.regional || 'Sem regional';
       const udn = item.udn || 'Sem UDN';
-      if (!porUdnRegional[reg]) porUdnRegional[reg] = {};
-      if (!porUdnRegional[reg][udn]) porUdnRegional[reg][udn] = { total: 0, validadas: 0, pendentes: 0 };
-      const entry = porUdnRegional[reg][udn];
+      if (!porUdn[udn]) porUdn[udn] = { total: 0, validadas: 0, pendentes: 0 };
+      const entry = porUdn[udn];
       entry.total++;
       const st = statusEfetivo(item);
       if (st === 'Validada') entry.validadas++;
@@ -835,7 +863,7 @@ const CurationService = (function () {
       totalRespostas, totalComIniciativa, totalSemIniciativa,
       validadas, pendentes, emRevisao, necessitaRevisao,
       pctConcluido: totalComIniciativa ? Math.round((validadas / totalComIniciativa) * 100) : 0,
-      porUdnRegional, porCategoriaValidada,
+      porUdn, porCategoriaValidada,
     };
   }
 
@@ -920,9 +948,20 @@ function possuiIniciativaRespondida(item){
   });
   return false;
 }
+/** Dois registros-placeholder confirmados na auditoria da base real das UDNs (Gate 2,
+ *  etapa2/etapa4 do projeto): slots de projeto não usados dentro de uma sessão com
+ *  múltiplos projetos. Vêm com "Possui Iniciativa = Sim" (por isso não são pegos pela
+ *  regra acima), mas o "Nome do Projeto" é sempre um destes dois textos fixos —
+ *  nunca uma iniciativa real. Função central única, mesmo padrão do resto da regra. */
+const NOMES_PLACEHOLDER_UDN = ['não aplicável', 'já enviado anteriormente'];
+function ehPlaceholderUdn(item){
+  const nome = String((item && item.nome) || '').trim().toLowerCase();
+  return NOMES_PLACEHOLDER_UDN.includes(nome);
+}
 function tratarComoSemIniciativa(item){
   if(!item) return true;
   if(item.status === 'Sem Iniciativa') return true;
+  if(ehPlaceholderUdn(item)) return true;
   return !possuiIniciativaRespondida(item);
 }
 function elegivelParaCuradoria(item){
@@ -1003,18 +1042,29 @@ function resumoCurto(texto, max){
 /**
  * Normaliza um item vindo do DataService para o formato que o resto da
  * Central espera. Ponto único de tradução entre "o que a origem manda"
- * e "o que a interface usa" — quando a estrutura real do Excel Online
- * for confirmada, só esta função (e os rótulos do Bloco 1) precisam
- * ser ajustados.
+ * e "o que a interface usa".
+ *
+ * Ajustada no Gate 2G (Passo 7) para os nomes reais devolvidos pelo Select
+ * do Fluxo 1 (Buscar Iniciativas UDNs): "nome" (não mais "nome_projeto") e
+ * "categoria_validada" (não mais "categoria_oficial"). Todos os demais campos
+ * reais (cargo, funcao_cargo, whatsapp_responsavel, outras_liderancas,
+ * maturidade_digital, status_atual, area_impactada, proximo_estagio,
+ * responsavel_principal, motivo_*, impedimentos_*, planejamento_*, apoio_*,
+ * data_curadoria) já chegam com o nome final e passam direto pelo
+ * Object.assign abaixo — ainda sem tela própria que os exiba (fora do escopo
+ * desta etapa, que é só conectar a origem de dados).
+ *
+ * A camada de "Regional" foi removida desta função e de toda a Central:
+ * a base real das UDNs não tem esse campo (só existe "Unidade de Negócio").
  */
 function normalizeIniciativa(raw){
   const tecnologias = (raw.ferramentas_chips || '').split(',').map(s=>s.trim()).filter(Boolean);
   return Object.assign({}, raw, {
-    nome: raw.nome_projeto || '(Sem nome informado)',
+    nome: raw.nome || '(Sem nome informado)',
     udn: raw.udn || '',
     categoria_original: raw.categoria || '',
     tecnologias_original: tecnologias,
-    categoria_validada: raw.categoria_oficial || null,
+    categoria_validada: raw.categoria_validada || null,
     potencial_validado: raw.potencial_replicacao || null,
     nota_reconhecimento: raw.nota_reconhecimento ? Number(raw.nota_reconhecimento) : 0,
     parecer_curadoria: raw.parecer_curadoria || '',
@@ -1033,8 +1083,8 @@ function precomputeAreas(){
    ============================================================ */
 let RAW_DATA = [];
 const AppState = { revisor: '', currentQueue: null, currentDraft: null, viewingAdHoc: false, adHocItem: null };
-const ListaState = { search: '', filters: { regional: new Set(), udn: new Set(), status: new Set() } };
-const CasesState = { search: '', filters: { regional: new Set(), status_case: new Set(), potencial: new Set() } };
+const ListaState = { search: '', filters: { udn: new Set(), status: new Set() } };
+const CasesState = { search: '', filters: { status_case: new Set(), potencial: new Set() } };
 
 const PAGE_TITLES = {
   dashboard: 'Página Inicial', revisao: 'Fila de Revisão', lista: 'Consultar Iniciativas',
@@ -1091,8 +1141,30 @@ function initReviewerGate(){
   input.focus();
 }
 
+/** Mensagem neutra no portal de entrada quando o carregamento inicial falha — nunca
+ *  expõe nome de tabela, planilha, Excel ou Power Automate na tela (regra do projeto).
+ *  Reaproveita o mesmo cartão (.rg-card) do portal de entrada, sem criar um segundo
+ *  componente visual só para este caso. */
+function renderInitError(){
+  const card = document.querySelector('#reviewerGate .rg-card');
+  if(!card) return;
+  card.innerHTML = `
+    <h2>Não foi possível carregar as iniciativas</h2>
+    <p>Tente novamente em instantes. Se o problema continuar, avise a equipe responsável.</p>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnTentarNovamenteInit">Tentar novamente</button>
+  `;
+  document.getElementById('btnTentarNovamenteInit').addEventListener('click', ()=> location.reload());
+}
+
 async function initApp(){
-  const dados = await DataService.buscarTodasIniciativas();
+  let dados;
+  try {
+    dados = await DataService.buscarTodasIniciativas();
+  } catch (err) {
+    console.error('[initApp] Falha ao carregar iniciativas:', err);
+    renderInitError();
+    return;
+  }
   RAW_DATA = dados.map((item) => {
     const normalizado = normalizeIniciativa(item);
     normalizado.id = Number(normalizado.id);
@@ -1139,7 +1211,7 @@ function renderDashboard(){
       ? renderSimpleBarHtml(stats.porCategoriaValidada)
       : `<div class="empty-state" style="padding:24px 10px;">${ic('info')}<p>Ainda não há iniciativas validadas para exibir por categoria.</p></div>`;
 
-  document.getElementById('chartUdnPorRegional').innerHTML = renderUdnPorRegional(stats.porUdnRegional);
+  document.getElementById('chartUdnPorRegional').innerHTML = renderPorUdn(stats.porUdn);
 }
 
 function renderSimpleBarHtml(obj){
@@ -1153,28 +1225,15 @@ function renderSimpleBarHtml(obj){
   }).join('');
 }
 
-function renderUdnPorRegional(porUdnRegional){
-  const regionais = Object.entries(porUdnRegional).sort((a,b)=>{
-    const totA = Object.values(a[1]).reduce((s,v)=>s+v.total,0);
-    const totB = Object.values(b[1]).reduce((s,v)=>s+v.total,0);
-    return totB - totA;
-  });
-  if(!regionais.length) return `<div class="empty-state" style="padding:24px 10px;">${ic('info')}<p>Nenhuma iniciativa recebida ainda.</p></div>`;
-  return regionais.map(([regional, udns])=>{
-    const entries = Object.entries(udns).sort((a,b)=>b[1].total - a[1].total);
-    const totReg = entries.reduce((s,[,v])=>s+v.total,0);
-    return `
-      <details class="filter-group" open style="margin-bottom:14px;background:var(--bg);border-radius:12px;padding:12px 16px;border:1px solid var(--gl);">
-        <summary style="display:flex;justify-content:space-between;"><span>${esc(regional)}</span><span class="badge b-teal">${totReg} iniciativa(s)</span></summary>
-        <div style="margin-top:10px;">
-          ${entries.map(([udn, v])=>`
-            <div class="bar-row"><div class="blabel" style="width:200px;" title="${esc(udn)}">${esc(udn)}</div>
-              <div class="bar-track"><div class="bar-fill" style="width:${Math.max((v.total/totReg*100),6)}%;"></div></div>
-              <div class="bar-val">${v.total}</div></div>
-          `).join('')}
-        </div>
-      </details>`;
-  }).join('');
+function renderPorUdn(porUdn){
+  const entries = Object.entries(porUdn).sort((a,b)=>b[1].total - a[1].total);
+  if(!entries.length) return `<div class="empty-state" style="padding:24px 10px;">${ic('info')}<p>Nenhuma iniciativa recebida ainda.</p></div>`;
+  const max = Math.max(...entries.map(([,v])=>v.total), 1);
+  return entries.map(([udn, v])=>`
+    <div class="bar-row"><div class="blabel" style="width:200px;" title="${esc(udn)}">${esc(udn)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max((v.total/max*100),6)}%;"></div></div>
+      <div class="bar-val">${v.total}</div></div>
+  `).join('');
 }
 
 function startReview(){
@@ -1254,7 +1313,7 @@ function renderReviewCardUnsafe(){
         <div class="rc-eyebrow">Iniciativa #${item.id}</div>
         <h2>${esc(item.nome)}</h2>
         <div class="rc-meta">
-          <span>${esc(item.udn)}</span><span>·</span><span>${esc(item.regional)}</span>
+          <span>${esc(item.udn)}</span>
           <span>·</span><span>Status: ${esc(statusReviewLabel(item.id))}</span>
         </div>
       </div>
@@ -1265,7 +1324,6 @@ function renderReviewCardUnsafe(){
 
           <div class="ro-group-title">Identificação</div>
           <div class="block1-grid">
-            <div class="ro-field"><div class="ro-k">Regional</div><div class="ro-v">${esc(item.regional)}</div></div>
             <div class="ro-field"><div class="ro-k">UDN</div><div class="ro-v">${esc(item.udn)}</div></div>
             <div class="ro-field"><div class="ro-k">Responsável</div><div class="ro-v">${esc(item.responsavel)}</div></div>
             <div class="ro-field"><div class="ro-k">E-mail</div><div class="ro-v">${esc(item.email_responsavel)}</div></div>
@@ -1417,7 +1475,7 @@ async function handleSave(mode){
     btnValidar.disabled = true;
     btnValidar.textContent = 'Salvando…';
     try {
-      await DataService.salvarCuradoria({ id: item.id, categoria: draft.categoria, potencial: draft.potencial, nota: draft.nota, parecer: draft.parecer, revisor: AppState.revisor });
+      await DataService.salvarCuradoria({ id: item.id, status: status, categoria: draft.categoria, potencial: draft.potencial, nota: draft.nota, parecer: draft.parecer, revisor: AppState.revisor });
     } catch (err) {
       console.error('[handleSave] Falha ao salvar curadoria:', err);
       document.getElementById('validationErrors').innerHTML = `
@@ -1457,7 +1515,6 @@ function openSingleReview(id){
    CAMADA DE UI — Consultar Iniciativas
    ============================================================ */
 function buildListaFilterPanel(){
-  const regionais = uniqueSortedVals(RAW_DATA.map(d=>d.regional));
   const udns = uniqueSortedVals(RAW_DATA.map(d=>d.udn));
   const statusList = MASTER.statusCentral;
 
@@ -1473,7 +1530,6 @@ function buildListaFilterPanel(){
 
   document.getElementById('listaFilterPanel').innerHTML = `
     <button type="button" class="btn btn-ghost btn-sm" id="btnLimparFiltrosLista" style="width:100%;margin-bottom:10px;">${ic('x')} Limpar filtros</button>
-    ${groupHtml('Regional', 'regional', regionais)}
     ${groupHtml('UDN', 'udn', udns)}
     ${groupHtml('Status', 'status', statusList)}
   `;
@@ -1494,11 +1550,10 @@ function buildListaFilterPanel(){
 
 function matchesListaFilters(d){
   const f = ListaState.filters;
-  if(f.regional.size && !f.regional.has(d.regional)) return false;
   if(f.udn.size && !f.udn.has(d.udn)) return false;
   if(f.status.size && !f.status.has(statusOf(d.id))) return false;
   if(ListaState.search){
-    const alvo = `${d.nome} ${d.udn} ${d.regional} ${d.categoria_original}`.toLowerCase();
+    const alvo = `${d.nome} ${d.udn} ${d.categoria_original}`.toLowerCase();
     if(!alvo.includes(ListaState.search)) return false;
   }
   return true;
@@ -1522,7 +1577,7 @@ function renderListaResults(){
           <h4>${esc(d.nome)}</h4>
           <span class="status-pill ${stCls}">${esc(st)}</span>
         </div>
-        <div class="meta"><b>${esc(d.udn)}</b> · ${esc(d.regional)}</div>
+        <div class="meta"><b>${esc(d.udn)}</b></div>
         <div class="badgerow">${d.categoria_original ? badgeHtml(d.categoria_original,'b-teal') : ''}</div>
       </div>`;
   }).join('');
@@ -1557,7 +1612,6 @@ function temCaseEstruturado(item){
 }
 
 function buildCasesFilterPanel(){
-  const regionais = uniqueSortedVals(RAW_DATA.map(d=>d.regional));
   function groupHtml(title, field, values){
     const selecionados = CasesState.filters[field];
     const opts = values.map(v=>{
@@ -1569,7 +1623,6 @@ function buildCasesFilterPanel(){
   }
   document.getElementById('casesFilterPanel').innerHTML = `
     <button type="button" class="btn btn-ghost btn-sm" id="btnLimparFiltrosCases" style="width:100%;margin-bottom:10px;">${ic('x')} Limpar filtros</button>
-    ${groupHtml('Regional', 'regional', regionais)}
     ${groupHtml('StatusCase', 'status_case', MASTER.statusCase)}
     ${groupHtml('Potencial de Replicação', 'potencial', MASTER.potencialReplicacao.map(p=>POTENCIAL_CURADORIA_LABEL[p.v]))}
   `;
@@ -1589,11 +1642,10 @@ function buildCasesFilterPanel(){
 
 function matchesCasesFilters(item){
   const f = CasesState.filters;
-  if(f.regional.size && !f.regional.has(item.regional)) return false;
   if(f.status_case.size && !f.status_case.has(statusCaseOf(item))) return false;
   if(f.potencial.size && !f.potencial.has(potencialCuradoriaLabel(item))) return false;
   if(CasesState.search){
-    const alvo = `${item.nome} ${item.udn} ${item.regional}`.toLowerCase();
+    const alvo = `${item.nome} ${item.udn}`.toLowerCase();
     if(!alvo.includes(CasesState.search)) return false;
   }
   return true;
@@ -1616,7 +1668,7 @@ function caseCardHtml(item){
         <h4>${esc(item.nome)}</h4>
         ${statusCaseBadgeHtml(item)}
       </div>
-      <div class="meta"><b>${esc(item.udn)}</b> · ${esc(item.regional)}</div>
+      <div class="meta"><b>${esc(item.udn)}</b></div>
       <div class="badgerow">
         ${categoriaOficialCuradoria(item) ? badgeHtml(categoriaOficialCuradoria(item),'b-teal') : ''}
         ${potencialCuradoriaLabel(item) ? `<span class="pill-level ${potencialPillClass(potencialCuradoriaLabel(item))}">${esc(potencialCuradoriaLabel(item))}</span>` : ''}
@@ -1670,7 +1722,7 @@ function renderDetalheCase(item){
   document.getElementById('caseDetailHeadInfo').innerHTML = `
     <div class="cd-eyebrow">CASE</div>
     <div class="cd-title">${esc(item.nome)}</div>
-    <div class="cd-meta"><span>${esc(item.udn)}</span><span>·</span><span>${esc(item.regional)}</span><span>·</span>${statusCaseBadgeHtml(item)}</div>
+    <div class="cd-meta"><span>${esc(item.udn)}</span><span>·</span>${statusCaseBadgeHtml(item)}</div>
   `;
   const corpo = temCaseEstruturado(item) ? `
     <div class="ro-group-title">Situação</div>
@@ -1808,7 +1860,7 @@ function renderCaseBuilder(){
       <div class="review-card-head">
         <div class="rc-eyebrow">Construção do Case</div>
         <h2>${esc(item.nome)}</h2>
-        <div class="rc-meta"><span>${esc(item.udn)}</span><span>·</span><span>${esc(item.regional)}</span></div>
+        <div class="rc-meta"><span>${esc(item.udn)}</span></div>
       </div>
       <div class="review-card-body">
         <div id="caseBuilderErrors"></div>
@@ -2004,7 +2056,7 @@ function renderIndicadores(){
         ${cincoEstrelas.map(d => `
           <div style="background:var(--bg);border:1px solid var(--gl);border-radius:12px;padding:14px 16px;">
             <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:13.5px;color:var(--pd);margin-bottom:6px;">${esc(d.nome)}</div>
-            <div style="font-size:12px;color:var(--gm);margin-bottom:4px;">${esc(d.udn)} · ${esc(d.regional)}</div>
+            <div style="font-size:12px;color:var(--gm);margin-bottom:4px;">${esc(d.udn)}</div>
             <div style="color:#E8B93A;font-size:15px;letter-spacing:1px;margin:6px 0;">★★★★★</div>
             <div style="font-size:12px;color:var(--gd);line-height:1.5;border-top:1px solid var(--gl);padding-top:8px;">${resumoCurto(parecerCuradoria(d), 160)}</div>
           </div>`).join('')}
@@ -2038,10 +2090,10 @@ function baixarCsv(nomeArquivo, linhas){
 }
 
 document.getElementById('btnExportar').addEventListener('click', ()=>{
-  const linhas = [['ID','UDN','Regional','Nome da Iniciativa','Categoria Oficial','Potencial de Replicação','Status da Curadoria','StatusCase','Revisor']];
+  const linhas = [['ID','UDN','Nome da Iniciativa','Categoria Oficial','Potencial de Replicação','Status da Curadoria','StatusCase','Revisor']];
   RAW_DATA.filter(elegivelParaCuradoria).forEach(item => {
     linhas.push([
-      item.id, item.udn, item.regional, item.nome,
+      item.id, item.udn, item.nome,
       categoriaOficialCuradoria(item) || '', potencialCuradoriaLabel(item) || '',
       statusOf(item.id), statusCaseOf(item), revisorCuradoria(item) || '',
     ]);
@@ -2060,7 +2112,7 @@ function campoIAouTexto(v){ return campoIA(v) || 'Não informado.'; }
 
 function linhaCasesExport(item){
   return [
-    item.id, campoIAouTexto(item.nome), campoIAouTexto(item.udn), campoIAouTexto(item.regional),
+    item.id, campoIAouTexto(item.nome), campoIAouTexto(item.udn),
     campoIAouTexto(categoriaOficialCuradoria(item)), campoIAouTexto(potencialCuradoriaLabel(item)), campoIAouTexto(parecerCuradoria(item)),
     campoIAouTexto(item.objetivo),
     campoIAouTexto(item.case_situacao_motivo), campoIAouTexto(item.case_situacao_impacto),
@@ -2077,7 +2129,7 @@ document.getElementById('btnExportarCases').addEventListener('click', ()=>{
   const dadosCuradoria = RAW_DATA.filter(elegivelParaCuradoria);
   const todosCases = dadosCuradoria.filter(elegivelParaCase);
   const cabecalho = [
-    'ID','Nome da iniciativa','UDN','Regional','Categoria','Potencial de Replicação','Parecer da Curadoria','Objetivo',
+    'ID','Nome da iniciativa','UDN','Categoria','Potencial de Replicação','Parecer da Curadoria','Objetivo',
     'Situação / Motivo','Situação / Impacto','Requer investimento','Descrição dos investimentos',
     'Como foi implementado','Ferramentas utilizadas','Áreas envolvidas','Benefícios obtidos',
     'Resultados mensuráveis','Cuidados recomendados','Pré-requisitos','Materiais de apoio','StatusCase',
