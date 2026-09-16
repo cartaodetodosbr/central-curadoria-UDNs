@@ -431,12 +431,12 @@ textarea.obs-field:focus, .edit-select:focus{outline:none;border-color:var(--t);
         <div class="kpi-grid" id="kpiGrid"></div>
 
         <div class="card chart-card">
-          <h3>Validadas por Categoria</h3><div class="cap">Categorização oficial definida na curadoria</div>
-          <div id="chartValidadosPorCategoria"></div>
-        </div>
-        <div class="card chart-card">
           <h3>Iniciativas por UDN</h3><div class="cap">Distribuição das iniciativas recebidas</div>
           <div id="chartUdnPorRegional"></div>
+        </div>
+        <div class="card chart-card">
+          <h3>Validadas por Categoria</h3><div class="cap">Categorização oficial definida na curadoria</div>
+          <div id="chartValidadosPorCategoria"></div>
         </div>
       </section>
 
@@ -511,11 +511,11 @@ textarea.obs-field:focus, .edit-select:focus{outline:none;border-color:var(--t);
         <div id="indResumoTexto" style="margin-bottom:18px;"></div>
         <div class="chart-grid">
           <div class="card chart-card"><h3>Ferramentas Mais Utilizadas</h3><div class="cap">Com base no que as UDNs informaram</div><div id="indFerramentas"></div></div>
-          <div class="card chart-card"><h3>Potencial de Replicação</h3><div class="cap">Distribuição das iniciativas validadas</div><div id="indPotencialPizza" style="display:flex;justify-content:center;align-items:center;min-height:180px;"></div></div>
+          <div class="card chart-card"><h3>Iniciativas por Categoria Oficial</h3><div class="cap">Categoria atribuída na curadoria</div><div id="indCategoriaOficial"></div></div>
         </div>
         <div class="card chart-card" style="margin-top:16px;">
-          <h3>Status da Curadoria</h3><div class="cap">Distribuição das iniciativas elegíveis por status</div>
-          <div id="indStatusCuradoria"></div>
+          <h3>Potencial de Replicação</h3><div class="cap">Distribuição das iniciativas validadas</div>
+          <div id="indPotencialPizza" style="display:flex;justify-content:center;align-items:center;min-height:180px;"></div>
         </div>
         <div class="card chart-card" style="margin-top:16px;">
           <h3><svg class="icon" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4z"/><path d="M8 5H5a3 3 0 0 0 3 4"/><path d="M16 5h3a3 3 0 0 1-3 4"/><path d="M12 13v4"/><path d="M9 21h6"/><path d="M10 17h4l.5 4h-5z"/></svg> Iniciativas com 5 Estrelas</h3>
@@ -2105,10 +2105,20 @@ function renderIndicadores(){
   validadas.forEach(d => { const l = potencialCuradoriaLabel(d) || 'Não avaliado'; contagemPotencial[l] = (contagemPotencial[l]||0)+1; });
   renderPizzaChart('indPotencialPizza', Object.entries(contagemPotencial));
 
-  // Status da curadoria (todas elegíveis)
-  const contagemStatus = {};
-  dadosCuradoria.forEach(d => { const s = statusOf(d.id); contagemStatus[s] = (contagemStatus[s]||0)+1; });
-  document.getElementById('indStatusCuradoria').innerHTML = renderSimpleBarHtml(contagemStatus);
+  // Iniciativas por Categoria Oficial: exatamente as 5 categorias oficiais do
+  // cadastro (mesmas de MASTER.categorias, exceto "Operações / Logística" e
+  // "Sem categoria (revisão posterior)", por pedido explícito) — contadas pela
+  // Categoria Oficial atribuída na curadoria (categoriaOficialCuradoria), só
+  // nas iniciativas já validadas, mesma base usada em Potencial de Replicação.
+  // Categoria sem nenhuma validada mostra 0, em vez de sumir do gráfico.
+  const CATEGORIAS_OFICIAIS_INDICADOR = ['Atendimento ao Cliente', 'Processos Internos', 'Vendas / Comercial', 'Gestão de Pessoas', 'Financeiro'];
+  const contagemCategoriaOficial = {};
+  CATEGORIAS_OFICIAIS_INDICADOR.forEach(c => { contagemCategoriaOficial[c] = 0; });
+  validadas.forEach(d => {
+    const cat = categoriaOficialCuradoria(d);
+    if (CATEGORIAS_OFICIAIS_INDICADOR.includes(cat)) contagemCategoriaOficial[cat]++;
+  });
+  document.getElementById('indCategoriaOficial').innerHTML = renderSimpleBarHtml(contagemCategoriaOficial);
 
   // 5 estrelas
   const cincoEstrelas = validadas.filter(d => notaCuradoria(d) === 5);
